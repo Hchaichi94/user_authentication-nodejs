@@ -1,71 +1,62 @@
 const express = require('express');
+const expressLayouts = require('express-ejs-layouts');
 const mongoose = require('mongoose');
+const passport = require('passport');
+const flash = require('connect-flash');
 const session = require('express-session');
-var passport = require('passport');
-var crypto = require('crypto');
-var routes = require('./routes');
-const connection = require('./config/database');
 
-// Package documentation - https://www.npmjs.com/package/connect-mongo
-const MongoStore = require('connect-mongo')(session);
+const app = express();
 
-/**
- * -------------- GENERAL SETUP ----------------
- */
+// Passport Config
+require('./config/passport')(passport);
 
-// Gives us access to variables set in the .env file via `process.env.VARIABLE_NAME` syntax
-require('dotenv').config();
+// DB Config
+const db = require('./config/keys').mongoURI;
 
-// Create the Express application
-var app = express();
+// Connect to MongoDB
+mongoose
+  .connect(
+    db,
+    { useNewUrlParser: true ,useUnifiedTopology: true}
+  )
+  .then(() => console.log('MongoDB Connected'))
+  .catch(err => console.log(err));
 
-app.use(express.json());
+// EJS
+app.use(expressLayouts);
+app.set('view engine', 'ejs');
+
+// Express body parser
 app.use(express.urlencoded({ extended: true }));
 
+// Express session
+app.use(
+  session({
+    secret: 'secret',
+    resave: true,
+    saveUninitialized: true
+  })
+);
 
-/**
- * -------------- SESSION SETUP ----------------
- */
-
-const sessionStore = new MongoStore({ mongooseConnection: connection, collection: 'sessions' });
-
-app.use(session({
-    secret: process.env.SECRET,
-    resave: false,
-    saveUninitialized: true,
-    store: sessionStore,
-    cookie: {
-        maxAge: 1000 * 60 * 60 * 24 // Equals 1 day (1 day * 24 hr/1 day * 60 min/1 hr * 60 sec/1 min * 1000 ms / 1 sec)
-    }
-}));
-
-/**
- * -------------- PASSPORT AUTHENTICATION ----------------
- */
-
-// Need to require the entire Passport config module so app.js knows about it
-require('./config/passport');
-
+// Passport middleware
 app.use(passport.initialize());
 app.use(passport.session());
 
-app.use((req, res, next) => {
-    console.log(req.session);
-    console.log(req.user);
-    next();
+// Connect flash
+app.use(flash());
+
+// Global variables
+app.use(function(req, res, next) {
+  res.locals.success_msg = req.flash('success_msg');
+  res.locals.error_msg = req.flash('error_msg');
+  res.locals.error = req.flash('error');
+  next();
 });
 
-/**
- * -------------- ROUTES ----------------
- */
+// Routes
+app.use('/', require('./routes/index.js'));
+app.use('/users', require('./routes/users.js'));
 
-// Imports all of the routes from ./routes/index.js
-app.use(routes);
+const PORT = process.env.PORT || 5000;
 
-
-/**
- * -------------- SERVER ----------------
- */
-
-// Server listens on http://localhost:3000
-app.listen(3000)
+app.listen(PORT, console.log(`Server running on  ${PORT}`));

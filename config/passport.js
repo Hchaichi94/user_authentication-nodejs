@@ -1,47 +1,40 @@
-const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
-const connection = require('./database');
-const User = connection.models.User;
-const validPassword = require('../lib/passwordUtils').validPassword;
+const bcrypt = require('bcryptjs');
 
-const customFields = {
-    usernameField: 'uname',
-    passwordField: 'pw'
-};
+// Load User model
+const User = require('../models/User');
 
-const verifyCallback = (username, password, done) => {
+module.exports = function(passport) {
+  passport.use(
+    new LocalStrategy({ usernameField: 'email' }, (email, password, done) => {
+      // Match user
+      User.findOne({
+        email: email
+      }).then(user => {
+        if (!user) {
+          return done(null, false, { message: 'That email is not registered' });
+        }
 
-    User.findOne({ username: username })
-        .then((user) => {
-
-            if (!user) { return done(null, false) }
-
-            const isValid = validPassword(password, user.hash, user.salt);
-
-            if (isValid) {
-                return done(null, user);
-            } else {
-                return done(null, false);
-            }
-        })
-        .catch((err) => {
-            done(err);
+        // Match password
+        bcrypt.compare(password, user.password, (err, isMatch) => {
+          if (err) throw err;
+          if (isMatch) {
+            return done(null, user);
+          } else {
+            return done(null, false, { message: 'Password incorrect' });
+          }
         });
+      });
+    })
+  );
 
-}
-
-const strategy = new LocalStrategy(customFields, verifyCallback);
-
-passport.use(strategy);
-
-passport.serializeUser((user, done) => {
+  passport.serializeUser(function(user, done) {
     done(null, user.id);
-});
+  });
 
-passport.deserializeUser((userId, done) => {
-    User.findById(userId)
-        .then((user) => {
-            done(null, user);
-        })
-        .catch(err => done(err))
-});
+  passport.deserializeUser(function(id, done) {
+    User.findById(id, function(err, user) {
+      done(err, user);
+    });
+  });
+};
